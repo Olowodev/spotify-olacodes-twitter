@@ -5,7 +5,9 @@ import {BsArrowUpRight} from 'react-icons/bs'
 import {IoIosPlay} from 'react-icons/io'
 import {HiOutlineChevronDown, HiOutlineChevronUp} from 'react-icons/hi'
 import styles from '../styles/Home.module.css'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import Router from 'next/router'
+import axios from 'axios'
 
 export default function Home() {
   const [active, setActive] = useState(true)
@@ -13,6 +15,76 @@ export default function Home() {
   const drop = () => {
     setActive(!active)
   }
+
+  const getNewToken = async () => {
+    const grant_type = 'refresh_token'
+    const refresh_token = process.env.NEXT_PUBLIC_REFRESH_TOKEN
+    const encodedSecret =Buffer.from(process.env.NEXT_PUBLIC_CLIENT_ID + ":" + process.env.NEXT_PUBLIC_CLIENT_SECRET).toString("base64")
+    try {
+      const res = await axios.post(
+        'https://accounts.spotify.com/api/token',
+        {
+          grant_type,
+          refresh_token
+        },
+        {
+          headers: {
+            'Authorization': 'Basic ' + encodedSecret,
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
+        }
+      )
+
+      console.log(res.data)
+    } catch(err) {
+      console.log(err)
+    }
+  }
+
+  useEffect(()=> {
+    getNewToken()
+  }, [])
+
+  
+  // const code = 'AQANAtEaHz7DNiUX4458zOVPm5d-q-27rG-K-AEV1m3qwP_DRPbPzTQS03_vY8ozvuaa4tcBIV2OtSDFXe9g6dS9Vwnex6FCc3kJr-MKx6wHeudEeJaN_YDbm1b4ZQpTpdpJHgv6jebDkeUdx60eVoqMPXg71mWbbhtG1ngvL75ySP9cFmEXRWfWW2LDQ1TAI_LWgFQGf3ybQhTawMEt2w_R_faN2zxGjtHw5EN4cBrEUu2du91zyq9zE2WKJi-FJeCzIpbojv0a8oxcgu5pFqZAls4BOqCsdNS1VK5GMG12U3VyT-4SBV5cuNx-d2XuyKMdZAH5VGbW6CtxCjq0OCJdUmW5h1pIso4b1m8_FjIcmjpCEz-h4-bfRA6RzM7sNvhjlTslqwiX2CMoBa1vR64OfhaElNQUTeAVdACg7KLkH30wxs8WbIbwejRm6AS_YoWot04q129DAbc4kbd6dQkMQBkP4arguGyQ4iNbnLSPQNRgdCCSbnm6Frg7pYnxe5UMPGSFW2ksrwoGdf9Ozq_KUhD_nnkayQ2o_k_IBmeG0VzMTbYHB1E7Lj4j1Hj8LYxMH3lX1gtYqaMU18K5k3QKZFrg1mIPR-9m5c8K2POmiX4jYibvmDM6It29FuaG1kNhygtRQz1hHeJl-eYStQJ8ir0jppF-wucm4DxhXeYjqiOw_jNN3-4Sf575ROSJNzU'
+  // const redirect_uri = 'http://localhost:3000/callback'
+
+  // useEffect(()=> {
+  //   const getAccessToken = async () => {
+  //   try {
+  //   const res = await axios.post('https://accounts.spotify.com/api/token', 
+  //     {
+  //       code,
+  //       redirect_uri, 
+  //       grant_type: 'authorization_code'
+  //     }, 
+  //     {
+  //       headers: {
+  //         'Authorization': 'Basic ' + Buffer.from(process.env.NEXT_PUBLIC_CLIENT_ID + ":" + process.env.NEXT_PUBLIC_CLIENT_SECRET).toString("base64"),
+  //         'Content-Type': 'application/x-www-form-urlencoded'
+  //       }
+  //     }
+  //   )
+
+  //   console.log(res.data)
+  //   } catch (err: any) {
+  //     console.log(err.response)
+  //   }
+
+  // }
+
+  // getAccessToken()
+  // }, [])
+  // const scope = 'user-read-playback-state user-modify-playback-state user-read-currently-playing app-remote-control streaming playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public user-follow-modify user-follow-read user-read-playback-position user-top-read user-read-recently-played user-library-modify user-library-read user-read-email user-read-private'
+
+  // useEffect(()=> {
+  // const {pathname} = Router
+
+  //   if (pathname == '/') {
+  //   Router.push(`https://accounts.spotify.com/authorize?response_type=code&client_id=${process.env.NEXT_PUBLIC_CLIENT_ID}&scope=${scope}&redirect_uri=${redirect_uri}`)
+  //   }
+  // }, [])
+
   return (
     <div className={styles.container}>
       <Head>
