@@ -279,7 +279,7 @@ export default function Home() {
             {active ? <HiOutlineChevronUp /> : <HiOutlineChevronDown />}
           </div>
           {active ? <div className={styles.dropDownList}>
-            {recentTracks.length > 0 && recentTracks.map((track, index)=> (
+            {recentTracks.length > 0 && recentTracks.map((track: any, index: any)=> (
               <p key={`${index}${track.songName}`}>{index + 1}. {track.songName} - {track.artistName}</p>
             ))}
             {/* <p>Rapid Fire - Cruel Santino</p>
