@@ -1,25 +1,41 @@
 import Head from 'next/head'
 import Image from 'next/image'
-import {AiFillFastBackward, AiFillFastForward} from 'react-icons/ai'
-import {BsArrowUpRight} from 'react-icons/bs'
-import {IoIosPlay} from 'react-icons/io'
-import {HiOutlineChevronDown, HiOutlineChevronUp} from 'react-icons/hi'
+import { AiFillFastBackward, AiFillFastForward } from 'react-icons/ai'
+import { BsArrowUpRight } from 'react-icons/bs'
+import { IoIosPlay } from 'react-icons/io'
+import { HiOutlineChevronDown, HiOutlineChevronUp } from 'react-icons/hi'
 import styles from '../styles/Home.module.css'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Router from 'next/router'
 import axios from 'axios'
+import Airtable from 'airtable'
 
 export default function Home() {
   const [active, setActive] = useState(true)
-
+  const [track, setTrack] = useState({
+    songName: '',
+    isPlaying: true,
+    artistName: '',
+    url: '',
+    coverImageUrl: '',
+    previewUrl: ''
+  })
+  const [recentTracks, setRecentTracks] = useState<any>([])
   const drop = () => {
     setActive(!active)
   }
 
-  const getNewToken = async () => {
+  Airtable.configure({
+    endpointUrl: "https://api.airtable.com",
+    apiKey: process.env.NEXT_PUBLIC_AIRTABLE_API
+  })
+
+  const base = Airtable.base(process.env.NEXT_PUBLIC_AIRTABLE_BASE_ID)
+
+  const getNewToken = useCallback(async () => {
     const grant_type = 'refresh_token'
     const refresh_token = process.env.NEXT_PUBLIC_REFRESH_TOKEN
-    const encodedSecret =Buffer.from(process.env.NEXT_PUBLIC_CLIENT_ID + ":" + process.env.NEXT_PUBLIC_CLIENT_SECRET).toString("base64")
+    const encodedSecret = Buffer.from(process.env.NEXT_PUBLIC_CLIENT_ID + ":" + process.env.NEXT_PUBLIC_CLIENT_SECRET).toString("base64")
     try {
       const res = await axios.post(
         'https://accounts.spotify.com/api/token',
@@ -35,17 +51,155 @@ export default function Home() {
         }
       )
 
-      console.log(res.data)
-    } catch(err) {
+      return res.data
+    } catch (err: any) {
       console.log(err)
-    }
-  }
 
-  useEffect(()=> {
-    getNewToken()
+      throw new Error(err)
+    }
   }, [])
 
-  
+  const updateAirtableToken = useCallback( async () => {
+    // get new token from Spotify
+
+    const res = await getNewToken();
+
+    // Spotify tokens expire after 1 hour. We convert the expiry time to milliseconds and take 300000ms off to account for any latency.
+    const created = Date.now();
+    const token = {
+      Token: res.access_token,
+      Expiry: (res.expires_in - 300) * 1000,
+      Created: created,
+    };
+
+    // console.log(token.Expiry)
+    // console.log(token.Created)
+
+
+    // update Airtable
+    await base("Access Tokens").update([
+      {
+        id: "recaBemOM2helWOTg",
+        fields: {
+          ...token,
+        },
+      },
+    ]);
+  }, [])
+
+  const getRecentlyPlayed = useCallback( async (token: any) => {
+    const headers = {
+      Authorization: `Bearer ${token.Token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json'
+    }
+    try {
+      const res = await axios.get('https://api.spotify.com/v1/me/player/currently-playing', {headers})
+
+      if (
+        res.data.is_playing === false ||
+        res.data.currently_playing_type !== 'track'
+      ) {
+        const res = await axios.get('https://api.spotify.com/v1/me/player/recently-played?limit=1', {headers})
+        const history = res.data.items
+        const recentTrack = history[0].track
+
+        setTrack({
+          songName: recentTrack.name,
+          isPlaying: false,
+          artistName: recentTrack.artists[0].name,
+          url: recentTrack.external_urls.spotify,
+          coverImageUrl: recentTrack.album.images[0].url,
+          previewUrl: recentTrack.preview_url
+        })
+      } else {
+        const playingTrack = res.data.item
+        setTrack({
+          songName: playingTrack.name,
+          isPlaying: res.data.is_playing,
+          artistName: playingTrack.artists[0].name,
+          url: playingTrack.external_urls.spotify,
+          coverImageUrl: playingTrack.album.images[0].url,
+          previewUrl: playingTrack.preview_url
+        })
+      }
+    } catch (err) {
+      console.log(err)
+    }
+  }, [])
+
+  const getRecentSongs = useCallback( async (token: any) => {
+    const headers = {
+      Authorization: `Bearer ${token.Token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json'
+    }
+    try {
+        const res = await axios.get('https://api.spotify.com/v1/me/player/recently-played?limit=15', {headers})
+        const history = res.data.items
+
+        history.map((item: any, index: number) => {
+        const track = item.track
+        recentTracks.push( {
+          songName: track.name,
+          isPlaying: false,
+          artistName: track.artists[0].name,
+          url: track.external_urls.spotify,
+          coverImageUrl: track.album.images[0].url,
+          previewUrl: track.preview_url
+        })
+
+      })
+    } catch (err) {
+      console.log(err)
+    }
+  }, [])
+
+  const initiate = useCallback( async () => {
+    try {
+      const isTokenValid = async (token: any) => {
+        const now = Date.now()
+        if (!token.Created || !token.Expiry) {
+          await updateAirtableToken()
+          const expiry = Number(token.Created) + Number(token.Expiry)
+          return now < expiry
+        } else {
+          const expiry = Number(token.Created) + Number(token.Expiry)
+          return now < expiry
+        }
+
+      }
+
+      const res = await base('Access Tokens').select().firstPage()
+      const token = res[1].fields
+      const valid = await isTokenValid(token)
+      if (token && !valid) {
+        await updateAirtableToken()
+      }
+
+      if (!token) {
+        await updateAirtableToken()
+      }
+      await getRecentSongs(token)
+      console.log('test')
+
+      await getRecentlyPlayed(token)
+      
+    } catch (err: any) {
+        console.log(err)
+        if (err.response) {
+          if (err.response.data.error.message === 'The access token expired') {
+            await initiate()
+          }
+        }
+    }
+  }, [])
+
+  useEffect(() => {
+    initiate()
+  }, [initiate])
+
+
   // const code = 'AQANAtEaHz7DNiUX4458zOVPm5d-q-27rG-K-AEV1m3qwP_DRPbPzTQS03_vY8ozvuaa4tcBIV2OtSDFXe9g6dS9Vwnex6FCc3kJr-MKx6wHeudEeJaN_YDbm1b4ZQpTpdpJHgv6jebDkeUdx60eVoqMPXg71mWbbhtG1ngvL75ySP9cFmEXRWfWW2LDQ1TAI_LWgFQGf3ybQhTawMEt2w_R_faN2zxGjtHw5EN4cBrEUu2du91zyq9zE2WKJi-FJeCzIpbojv0a8oxcgu5pFqZAls4BOqCsdNS1VK5GMG12U3VyT-4SBV5cuNx-d2XuyKMdZAH5VGbW6CtxCjq0OCJdUmW5h1pIso4b1m8_FjIcmjpCEz-h4-bfRA6RzM7sNvhjlTslqwiX2CMoBa1vR64OfhaElNQUTeAVdACg7KLkH30wxs8WbIbwejRm6AS_YoWot04q129DAbc4kbd6dQkMQBkP4arguGyQ4iNbnLSPQNRgdCCSbnm6Frg7pYnxe5UMPGSFW2ksrwoGdf9Ozq_KUhD_nnkayQ2o_k_IBmeG0VzMTbYHB1E7Lj4j1Hj8LYxMH3lX1gtYqaMU18K5k3QKZFrg1mIPR-9m5c8K2POmiX4jYibvmDM6It29FuaG1kNhygtRQz1hHeJl-eYStQJ8ir0jppF-wucm4DxhXeYjqiOw_jNN3-4Sf575ROSJNzU'
   // const redirect_uri = 'http://localhost:3000/callback'
 
@@ -93,11 +247,11 @@ export default function Home() {
         <link rel="icon" href="/favicon.ico" />
       </Head>
       <div className={styles.bg}>
-          <img src='/blind.png' />
-        </div>
-        <div className={styles.blur}></div>
+        <img src={track.coverImageUrl} />
+      </div>
+      <div className={styles.blur}></div>
       <main className={styles.main}>
-        
+
         <div className={styles.left}>
           <div className={styles.leftTop}>
             <p>FRA 01/JAN</p>
@@ -107,26 +261,28 @@ export default function Home() {
           </div>
           <div className={styles.currentSong}>
             <div className={styles.previewImg}>
-              <img src='/blind.png' />
+              <img src={track.coverImageUrl} />
             </div>
-            <p>The Weeknd - Blinding Light</p>
+            <p>{track.artistName} - {track.songName}</p>
             <div className={styles.controls}>
-              <AiFillFastBackward style={{cursor: 'pointer'}} />
+              <AiFillFastBackward style={{ cursor: 'pointer' }} />
               <div></div>
-              <IoIosPlay style={{cursor: 'pointer'}} />
+              <IoIosPlay style={{ cursor: 'pointer' }} />
               <div></div>
-              <AiFillFastForward style={{cursor: 'pointer'}} />
+              <AiFillFastForward style={{ cursor: 'pointer' }} />
             </div>
           </div>
         </div>
         <div style={{ height: active ? '100%' : '', }} className={styles.right}>
-          <div onClick={drop} style={{marginBottom: active ? '0px' : '0px'}} className={styles.dropDown}>
+          <div onClick={drop} style={{ marginBottom: active ? '0px' : '0px' }} className={styles.dropDown}>
             <p>Songs</p>
-            {active ? <HiOutlineChevronUp/> : <HiOutlineChevronDown /> }
+            {active ? <HiOutlineChevronUp /> : <HiOutlineChevronDown />}
           </div>
           {active ? <div className={styles.dropDownList}>
-            <p>Blinding Light - The Weeknd</p>
-            <p>Rapid Fire - Cruel Santino</p>
+            {recentTracks.length > 0 && recentTracks.map((track, index)=> (
+              <p key={`${index}${track.songName}`}>{index + 1}. {track.songName} - {track.artistName}</p>
+            ))}
+            {/* <p>Rapid Fire - Cruel Santino</p>
             <p>Go Away - Fireboy DML</p>
             <p>Starlight - Dave</p>
             <p>As it Was - Harry Style</p>
@@ -138,13 +294,13 @@ export default function Home() {
             <p>Dandelions - Ruth B</p>
             <p>Dandelions - Ruth B</p>
             <p>Dandelions - Ruth B</p>
-            <p>Dandelions - Ruth B</p>
+            <p>Dandelions - Ruth B</p> */}
           </div>
-          : null }
+            : null}
         </div>
       </main>
 
-      
+
     </div>
   )
 }

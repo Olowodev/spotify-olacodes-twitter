@@ -77,6 +77,10 @@
   font-size: 20px;
 }
 
+.currentSong p {
+  width: 280px;
+}
+
 .previewImg {
   width: 280px;
   height: 280px;
