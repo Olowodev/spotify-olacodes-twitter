@@ -30,7 +30,7 @@ export default function Home() {
     apiKey: process.env.NEXT_PUBLIC_AIRTABLE_API
   })
 
-  const base = Airtable.base(process.env.NEXT_PUBLIC_AIRTABLE_BASE_ID)
+  const base = Airtable.base(String(process.env.NEXT_PUBLIC_AIRTABLE_BASE_ID))
 
   const getNewToken = useCallback(async () => {
     const grant_type = 'refresh_token'
