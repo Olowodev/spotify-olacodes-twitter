@@ -2,10 +2,10 @@ import Head from 'next/head'
 import Image from 'next/image'
 import { AiFillFastBackward, AiFillFastForward } from 'react-icons/ai'
 import { BsArrowUpRight } from 'react-icons/bs'
-import { IoIosPlay } from 'react-icons/io'
+import { IoIosPause, IoIosPlay } from 'react-icons/io'
 import { HiOutlineChevronDown, HiOutlineChevronUp } from 'react-icons/hi'
 import styles from '../styles/Home.module.css'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, ReactElement } from 'react'
 import Router from 'next/router'
 import axios from 'axios'
 import Airtable from 'airtable'
@@ -20,7 +20,15 @@ export default function Home() {
     coverImageUrl: '',
     previewUrl: ''
   })
+  const [found, setFound] = useState(false)
+  const [index, setIndex] = useState(0)
+  const [played, setPlayed] = useState(false)
+  const audio = useRef<HTMLAudioElement>(null)
   const [recentTracks, setRecentTracks] = useState<any>([])
+  const date = new Date()
+  const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
+  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+  
   const drop = () => {
     setActive(!active)
   }
@@ -59,7 +67,7 @@ export default function Home() {
     }
   }, [])
 
-  const updateAirtableToken = useCallback( async () => {
+  const updateAirtableToken = useCallback(async () => {
     // get new token from Spotify
 
     const res = await getNewToken();
@@ -87,20 +95,20 @@ export default function Home() {
     ]);
   }, [])
 
-  const getRecentlyPlayed = useCallback( async (token: any) => {
+  const getRecentlyPlayed = useCallback(async (token: any) => {
     const headers = {
       Authorization: `Bearer ${token.Token}`,
       'Content-Type': 'application/json',
       Accept: 'application/json'
     }
     try {
-      const res = await axios.get('https://api.spotify.com/v1/me/player/currently-playing', {headers})
+      const res = await axios.get('https://api.spotify.com/v1/me/player/currently-playing', { headers })
 
       if (
         res.data.is_playing === false ||
         res.data.currently_playing_type !== 'track'
       ) {
-        const res = await axios.get('https://api.spotify.com/v1/me/player/recently-played?limit=1', {headers})
+        const res = await axios.get('https://api.spotify.com/v1/me/player/recently-played?limit=1', { headers })
         const history = res.data.items
         const recentTrack = history[0].track
 
@@ -128,19 +136,19 @@ export default function Home() {
     }
   }, [])
 
-  const getRecentSongs = useCallback( async (token: any) => {
+  const getRecentSongs = useCallback(async (token: any) => {
     const headers = {
       Authorization: `Bearer ${token.Token}`,
       'Content-Type': 'application/json',
       Accept: 'application/json'
     }
     try {
-        const res = await axios.get('https://api.spotify.com/v1/me/player/recently-played?limit=15', {headers})
-        const history = res.data.items
+      const res = await axios.get('https://api.spotify.com/v1/me/player/recently-played?limit=15', { headers })
+      const history = res.data.items
 
-        history.map((item: any, index: number) => {
+      history.map((item: any, index: number) => {
         const track = item.track
-        recentTracks.push( {
+        recentTracks.push({
           songName: track.name,
           isPlaying: false,
           artistName: track.artists[0].name,
@@ -155,7 +163,7 @@ export default function Home() {
     }
   }, [])
 
-  const initiate = useCallback( async () => {
+  const initiate = useCallback(async () => {
     try {
       const isTokenValid = async (token: any) => {
         const now = Date.now()
@@ -184,14 +192,14 @@ export default function Home() {
       console.log('test')
 
       await getRecentlyPlayed(token)
-      
+
     } catch (err: any) {
-        console.log(err)
-        if (err.response) {
-          if (err.response.data.error.message === 'The access token expired') {
-            await initiate()
-          }
+      console.log(err)
+      if (err.response) {
+        if (err.response.data.error.message === 'The access token expired') {
+          await initiate()
         }
+      }
     }
   }, [])
 
@@ -239,6 +247,59 @@ export default function Home() {
   //   }
   // }, [])
 
+  // console.log(track.previewUrl)
+  const playPreview = () => {
+    const audioElement = audio.current
+
+    if (audioElement?.paused) {
+      setPlayed(true)
+      audioElement.play()
+    } else {
+      setPlayed(false)
+      audioElement?.pause()
+    }
+  }
+
+  audio.current?.addEventListener('ended', () => {
+    setPlayed(false)
+  })
+  const changeSong = (direction: String) => {
+    if (found == false) {
+    const trackIndex = recentTracks.findIndex((x: any) => {
+      return x.songName === track.songName
+    })
+    setFound(true)
+    setIndex(trackIndex)
+    }
+    if (direction == 'next') {
+      if (index == recentTracks.length -1) {
+        setTrack(recentTracks[0])
+        setIndex(0)
+      } else {
+      setTrack(recentTracks[index + 1])
+      setIndex(index + 1)
+      }
+    } else {
+      if (index == 0) {
+        setTrack(recentTracks[recentTracks.length - 1])
+        setIndex(recentTracks.length - 1)
+      } else {
+      setTrack(recentTracks[index-1])
+      setIndex(index -1)
+      }
+    }
+    setPlayed(false)
+    audio.current?.load()
+  }
+  
+
+  const selectSong = (chosenTrack: any, chosenIndex: any) => {
+    setTrack(chosenTrack)
+    setIndex(chosenIndex)
+    setPlayed(false)
+    audio.current?.load()    
+  }
+
   return (
     <div className={styles.container}>
       <Head>
@@ -246,6 +307,10 @@ export default function Home() {
         <meta name="description" content="Generated by create next app" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
+      {track.previewUrl && <audio ref={audio} style={{zIndex: 200}}>
+        <source src={track.previewUrl} />
+      </audio>}
+        <p className={styles.status}>{track.isPlaying ? 'Currently Playing' : 'Previously Played'}</p>
       <div className={styles.bg}>
         <img src={track.coverImageUrl} />
       </div>
@@ -254,10 +319,12 @@ export default function Home() {
 
         <div className={styles.left}>
           <div className={styles.leftTop}>
-            <p>FRA 01/JAN</p>
+            <p>{days[date.getDay()]} {date.getDate()}/{months[date.getMonth()]}</p>
+            <a href={track.url} target='_blank'>
             <div>
               <BsArrowUpRight color='black' />
             </div>
+            </a>
           </div>
           <div className={styles.currentSong}>
             <div className={styles.previewImg}>
@@ -265,11 +332,11 @@ export default function Home() {
             </div>
             <p>{track.artistName} - {track.songName}</p>
             <div className={styles.controls}>
-              <AiFillFastBackward style={{ cursor: 'pointer' }} />
+              <AiFillFastBackward onClick={() => changeSong('back')} style={{ cursor: 'pointer' }} />
               <div></div>
-              <IoIosPlay style={{ cursor: 'pointer' }} />
+              {!played ? <IoIosPlay onClick={playPreview} style={{ cursor: 'pointer' }} /> : <IoIosPause onClick={playPreview} style={{ cursor: 'pointer'}} />}
               <div></div>
-              <AiFillFastForward style={{ cursor: 'pointer' }} />
+              <AiFillFastForward onClick={() => changeSong('next')} style={{ cursor: 'pointer' }} />
             </div>
           </div>
         </div>
@@ -280,7 +347,7 @@ export default function Home() {
           </div>
           {active ? <div className={styles.dropDownList}>
             {recentTracks.length > 0 && recentTracks.map((track: any, index: any)=> (
-              <p key={`${index}${track.songName}`}>{index + 1}. {track.songName} - {track.artistName}</p>
+              <p onClick={()=> selectSong(track, index)} key={`${index}${track.songName}`}>{index + 1}. {track.songName} - {track.artistName}</p>
             ))}
             {/* <p>Rapid Fire - Cruel Santino</p>
             <p>Go Away - Fireboy DML</p>
@@ -298,9 +365,9 @@ export default function Home() {
           </div>
             : null}
         </div>
-      </main>
+      </main >
 
 
-    </div>
+    </div >
   )
 }
