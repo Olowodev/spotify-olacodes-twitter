@@ -181,18 +181,15 @@ export default function Home() {
       const res = await base('Access Tokens').select().firstPage()
       const token = res[1].fields
       const valid = await isTokenValid(token)
-      if (token && !valid) {
+      if ((token && !valid) || (!token)) {
         await updateAirtableToken()
+        initiate()
+      } else {
+        await getRecentSongs(token)
+        console.log('test')
+      
+        await getRecentlyPlayed(token)
       }
-
-      if (!token) {
-        await updateAirtableToken()
-      }
-      await getRecentSongs(token)
-      console.log('test')
-
-      await getRecentlyPlayed(token)
-
     } catch (err: any) {
       console.log(err)
       if (err.response) {
